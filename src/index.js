@@ -173,6 +173,10 @@ class PhoneInput extends React.Component {
 
   constructor(props) {
     super(props);
+    this.state = this.initState(props);
+  }
+
+  initState = props => {
     const { onlyCountries, preferredCountries, hiddenAreaCodes } = new CountryData(
       props.enableAreaCodes, props.enableTerritories, props.regions,
       props.onlyCountries, props.preferredCountries, props.excludeCountries, props.preserveOrder,
@@ -211,7 +215,7 @@ class PhoneInput extends React.Component {
 
     const highlightCountryIndex = onlyCountries.findIndex(o => o == countryGuess);
 
-    this.state = {
+    return {
       showDropdown: props.showDropdown,
 
       formattedNumber,
@@ -225,8 +229,8 @@ class PhoneInput extends React.Component {
       freezeSelection: false,
       debouncedQueryStingSearcher: debounce(this.searchCountry, 250),
       searchValue: '',
-    };
-  }
+    }
+  };
 
   componentDidMount() {
     if (document.addEventListener && this.props.enableClickOutside) {
@@ -237,6 +241,13 @@ class PhoneInput extends React.Component {
   componentWillUnmount() {
     if (document.removeEventListener && this.props.enableClickOutside) {
       document.removeEventListener('mousedown', this.handleClickOutside);
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.value !== this.props.value) {
+      const state = this.initState(this.props);
+      this.setState(state);
     }
   }
 
@@ -472,12 +483,13 @@ class PhoneInput extends React.Component {
 
   // return country data from state
   getCountryData = () => {
-    if (!this.state.selectedCountry) return {}
+    const country = this.state.selectedCountry || {};
     return {
-      name: this.state.selectedCountry.name || '',
-      dialCode: this.state.selectedCountry.dialCode || '',
-      countryCode: this.state.selectedCountry.iso2 || '',
-      format: this.state.selectedCountry.format || ''
+      name: country.name || '',
+      dialCode: country.dialCode || '',
+      countryCode: country.iso2 || '',
+      format: country.format || '',
+      phoneLength: country.format ? country.format.split('').filter(s => s === '.').length : 11
     }
   }
 
@@ -647,6 +659,29 @@ class PhoneInput extends React.Component {
     e.clipboardData.setData('text/plain', text);
     e.preventDefault();
   }
+
+  handleInputPaste = (e) => {
+    e.preventDefault();
+    const enteredValue = e.target.value;
+
+    const { onChange } = this.props;
+    const { selectedCountry } = this.state;
+    const pastedValue = window.clipboardData ?
+      window.clipboardData.getData('Text') // IE
+      : e.clipboardData.getData('text/plain');
+
+    const rawPastedValue = `${enteredValue}${pastedValue}`.replace(/[^0-9]/gim, '');
+
+    const { dialCode } = selectedCountry;
+    const phone = startsWith(rawPastedValue, dialCode)
+      ? rawPastedValue.slice(dialCode.length)
+      : rawPastedValue;
+
+    const formattedNumber = this.formatNumber(phone, selectedCountry);
+    this.setState({ formattedNumber });
+
+    if (onChange) onChange(formattedNumber.replace(/[^0-9]+/g,''), this.getCountryData(), e, formattedNumber);
+  };
 
   getHighlightCountryIndex = (direction) => {
     // had to write own function because underscore does not have findIndex. lodash has it
@@ -949,6 +984,7 @@ class PhoneInput extends React.Component {
           onFocus={this.handleInputFocus}
           onBlur={this.handleInputBlur}
           onCopy={this.handleInputCopy}
+          onPaste={this.handleInputPaste}
           value={formattedNumber}
           ref={el => this.numberInputRef = el}
           onKeyDown={this.handleInputKeyDown}
