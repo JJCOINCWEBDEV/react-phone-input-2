@@ -107,7 +107,7 @@ class PhoneInput extends React.Component {
     preferredCountries: [],
     excludeCountries: [],
 
-    placeholder: '1 (702) 123-4567',
+    placeholder: '1 (999) 999-9999',
     searchPlaceholder: 'search',
     searchNotFound: 'No entries to show',
     flagsImagePath: './flags.png',
