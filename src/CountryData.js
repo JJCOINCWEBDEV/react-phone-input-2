@@ -1,12 +1,10 @@
 import _rawCountries from './rawCountries'
 import _rawTerritories from './rawTerritories'
 
-function getMask(prefix, dialCode, predefinedMask, defaultMask, alwaysDefaultMask) {
+function getMask(predefinedMask, defaultMask, alwaysDefaultMask) {
   if (!predefinedMask || alwaysDefaultMask) {
-    return prefix+''.padEnd(dialCode.length,'.')+' '+defaultMask;
-  } else {
-    return prefix+''.padEnd(dialCode.length,'.')+' '+predefinedMask;
-  }
+    return defaultMask;
+  } else return predefinedMask;
 }
 
 // enableAreaCodes: boolean || array of iso2 codes
@@ -24,7 +22,7 @@ function initCountries(countries, enableAreaCodes, prefix, defaultMask, alwaysDe
       iso2: country[2],
       countryCode: country[3],
       dialCode: country[3],
-      format: getMask(prefix, country[3], country[4], defaultMask, alwaysDefaultMask),
+      format: getMask(country[4], defaultMask, alwaysDefaultMask),
       priority: country[5] || 0,
     };
 

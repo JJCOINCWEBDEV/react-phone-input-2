@@ -107,7 +107,6 @@ class PhoneInput extends React.Component {
     preferredCountries: [],
     excludeCountries: [],
 
-    placeholder: '1 (702) 123-4567',
     searchPlaceholder: 'search',
     searchNotFound: 'No entries to show',
     flagsImagePath: './flags.png',
@@ -173,6 +172,10 @@ class PhoneInput extends React.Component {
 
   constructor(props) {
     super(props);
+    this.state = this.initState(props);
+  }
+
+  initState = props => {
     const { onlyCountries, preferredCountries, hiddenAreaCodes } = new CountryData(
       props.enableAreaCodes, props.enableTerritories, props.regions,
       props.onlyCountries, props.preferredCountries, props.excludeCountries, props.preserveOrder,
@@ -190,28 +193,24 @@ class PhoneInput extends React.Component {
       countryGuess = this.guessSelectedCountry(inputNumber.substring(0, 6), props.country, onlyCountries, hiddenAreaCodes) || 0;
     } else if (props.country) {
       // Default country
-      countryGuess = onlyCountries.find(o => o.iso2 == props.country) || 0;
+      countryGuess = onlyCountries.find(o => o.iso2 === props.country) || 0;
     } else {
       // Empty params
       countryGuess = 0;
     }
 
-    const dialCode = (
-      inputNumber.length < 2 &&
-      countryGuess &&
-      !startsWith(inputNumber, countryGuess.dialCode)
-    ) ? countryGuess.dialCode : '';
+    let formattedNumber = inputNumber;
 
-    let formattedNumber;
-    formattedNumber = (inputNumber === '' && countryGuess === 0) ? '' :
-    this.formatNumber(
-      (props.disableCountryCode ? '' : dialCode) + inputNumber,
-      countryGuess.name ? countryGuess : undefined
-    );
+    if (countryGuess && startsWith(formattedNumber, countryGuess.dialCode)) {
+      formattedNumber = formattedNumber.slice(countryGuess.dialCode.length);
+      formattedNumber = this.formatNumber(formattedNumber, countryGuess);
+    }
 
-    const highlightCountryIndex = onlyCountries.findIndex(o => o == countryGuess);
+    const placeholder = countryGuess ? countryGuess.format.replace(/\./g, '9') : '(999) 999-9999';
+    const highlightCountryIndex = onlyCountries.findIndex(o => o === countryGuess);
 
-    this.state = {
+    return {
+      placeholder: props.placeholder || placeholder,
       showDropdown: props.showDropdown,
 
       formattedNumber,
@@ -225,8 +224,8 @@ class PhoneInput extends React.Component {
       freezeSelection: false,
       debouncedQueryStingSearcher: debounce(this.searchCountry, 250),
       searchValue: '',
-    };
-  }
+    }
+  };
 
   componentDidMount() {
     if (document.addEventListener && this.props.enableClickOutside) {
@@ -237,6 +236,13 @@ class PhoneInput extends React.Component {
   componentWillUnmount() {
     if (document.removeEventListener && this.props.enableClickOutside) {
       document.removeEventListener('mousedown', this.handleClickOutside);
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.value !== this.props.value) {
+      const state = this.initState(this.props);
+      this.setState(state);
     }
   }
 
@@ -280,7 +286,7 @@ class PhoneInput extends React.Component {
       if (mainCode) return mainCode;
     }
 
-    const secondBestGuess = onlyCountries.find(o => o.iso2 == country);
+    const secondBestGuess = onlyCountries.find(o => o.iso2 === country);
     if (inputNumber.trim() === '') return secondBestGuess;
 
     const bestGuess = onlyCountries.reduce((selectedCountry, country) => {
@@ -304,14 +310,15 @@ class PhoneInput extends React.Component {
     const { onlyCountries } = this.state
     let newSelectedCountry;
     if (country.indexOf(0) >= '0' && country.indexOf(0) <= '9') { // digit
-      newSelectedCountry = onlyCountries.find(o => o.dialCode == +country);
+      newSelectedCountry = onlyCountries.find(o => o.dialCode === +country);
     } else {
-      newSelectedCountry = onlyCountries.find(o => o.iso2 == country);
+      newSelectedCountry = onlyCountries.find(o => o.iso2 === country);
     }
     if (newSelectedCountry && newSelectedCountry.dialCode) {
       this.setState({
         selectedCountry: newSelectedCountry,
         formattedNumber: this.props.disableCountryCode ? '' : this.formatNumber(newSelectedCountry.dialCode, newSelectedCountry),
+        placeholder: newSelectedCountry.format.replace(/\./g, '9'),
       });
     }
   }
@@ -329,10 +336,9 @@ class PhoneInput extends React.Component {
 
     // if new value start with selectedCountry.dialCode, format number, otherwise find newSelectedCountry
     if (selectedCountry && startsWith(value, prefix + selectedCountry.dialCode)) {
-      formattedNumber = this.formatNumber(inputNumber, selectedCountry);
+      formattedNumber = this.formatNumber(inputNumber.slice(selectedCountry.dialCode.length), selectedCountry);
       this.setState({ formattedNumber });
-    }
-    else {
+    } else {
       if (this.props.disableCountryGuess) {newSelectedCountry = selectedCountry;}
       else {
         newSelectedCountry = this.guessSelectedCountry(inputNumber.substring(0, 6), country, onlyCountries, hiddenAreaCodes) || selectedCountry;
@@ -340,10 +346,14 @@ class PhoneInput extends React.Component {
       const dialCode = newSelectedCountry && startsWith(inputNumber, prefix + newSelectedCountry.dialCode) ? newSelectedCountry.dialCode : '';
 
       formattedNumber = this.formatNumber(
-        (this.props.disableCountryCode ? '' : dialCode) + inputNumber,
+        inputNumber,
         newSelectedCountry ? (newSelectedCountry) : undefined
       );
-      this.setState({ selectedCountry: newSelectedCountry, formattedNumber });
+      this.setState({
+        formattedNumber,
+        selectedCountry: newSelectedCountry,
+        placeholder: newSelectedCountry.format.replace(/\./g, '9'),
+      });
     }
   }
 
@@ -395,7 +405,7 @@ class PhoneInput extends React.Component {
     if (!country) return text;
 
     const { format } = country;
-    const { disableCountryCode, enableAreaCodeStretch, enableLongNumbers, autoFormat } = this.props;
+    const { disableCountryCode, enableAreaCodeStretch, enableLongNumbers } = this.props;
 
     let pattern;
     if (disableCountryCode) {
@@ -412,15 +422,7 @@ class PhoneInput extends React.Component {
       }
     }
 
-    if (!text || text.length === 0) {
-      return disableCountryCode ? '' : this.props.prefix;
-    }
-
-    // for all strings with length less than 3, just return it (1, 2 etc.)
-    // also return the same text if the selected country has no fixed format
-    if ((text && text.length < 2) || !pattern || !autoFormat) {
-      return disableCountryCode ? text : this.props.prefix+text;
-    }
+    if (!text || text.length === 0) return '';
 
     const formattedObject = reduce(pattern, (acc, character) => {
       if (acc.remainingText.length === 0) {
@@ -472,12 +474,13 @@ class PhoneInput extends React.Component {
 
   // return country data from state
   getCountryData = () => {
-    if (!this.state.selectedCountry) return {}
+    const country = this.state.selectedCountry || {};
     return {
-      name: this.state.selectedCountry.name || '',
-      dialCode: this.state.selectedCountry.dialCode || '',
-      countryCode: this.state.selectedCountry.iso2 || '',
-      format: this.state.selectedCountry.format || ''
+      name: country.name || '',
+      dialCode: country.dialCode || '',
+      countryCode: country.iso2 || '',
+      format: country.format || '',
+      phoneLength: country.format ? country.format.split('').filter(s => s === '.').length + (country.dialCode.length || 1) : 11,
     }
   }
 
@@ -502,29 +505,14 @@ class PhoneInput extends React.Component {
 
   handleInput = (e) => {
     const { value } = e.target;
-    const { prefix, onChange } = this.props;
+    const { onChange } = this.props;
 
-    let formattedNumber = this.props.disableCountryCode ? '' : prefix;
-    let newSelectedCountry = this.state.selectedCountry;
-    let freezeSelection = this.state.freezeSelection;
-
-    if (!this.props.countryCodeEditable) {
-      const mainCode = newSelectedCountry.hasAreaCodes ?
-        this.state.onlyCountries.find(o => o.iso2 === newSelectedCountry.iso2 && o.mainCode).dialCode :
-        newSelectedCountry.dialCode;
-
-      const updatedInput = prefix+mainCode;
-      if (value.slice(0, updatedInput.length) !== updatedInput) return;
-    }
-
-    if (value === prefix) {
-      // we should handle change when we delete the last digit
-      if (onChange) onChange('', this.getCountryData(), e, '');
-      return this.setState({ formattedNumber: '' });
-    }
+    let formattedNumber = '';
+    const newSelectedCountry = this.state.selectedCountry;
+    const { freezeSelection } = this.state;
 
     // Does exceed default 15 digit phone number limit
-    if (value.replace(/\D/g, '').length > 15) {
+    if (value.replace(/\D/g, '').length + newSelectedCountry.dialCode.length > 15) {
       if (this.props.enableLongNumbers === false) return;
       if (typeof this.props.enableLongNumbers === 'number') {
         if (value.replace(/\D/g, '').length > this.props.enableLongNumbers) return;
@@ -541,27 +529,11 @@ class PhoneInput extends React.Component {
       e.returnValue = false;
     }
 
-    const { country } = this.props
-    const { onlyCountries, selectedCountry, hiddenAreaCodes } = this.state
-
     if (onChange) e.persist();
 
     if (value.length > 0) {
-      // before entering the number in new format, lets check if the dial code now matches some other country
       const inputNumber = value.replace(/\D/g, '');
-
-      // we don't need to send the whole number to guess the country... only the first 6 characters are enough
-      // the guess country function can then use memoization much more effectively since the set of input it
-      // gets has drastically reduced
-      if (!this.state.freezeSelection || selectedCountry.dialCode.length > inputNumber.length) {
-        if (this.props.disableCountryGuess) {newSelectedCountry = selectedCountry;}
-        else {
-          newSelectedCountry = this.guessSelectedCountry(inputNumber.substring(0, 6), country, onlyCountries, hiddenAreaCodes) || selectedCountry;
-        }
-        freezeSelection = false;
-      }
       formattedNumber = this.formatNumber(inputNumber, newSelectedCountry);
-      newSelectedCountry = newSelectedCountry.dialCode ? newSelectedCountry : selectedCountry;
     }
 
     let caretPosition = e.target.selectionStart;
@@ -572,6 +544,7 @@ class PhoneInput extends React.Component {
       formattedNumber,
       freezeSelection,
       selectedCountry: newSelectedCountry,
+      placeholder: newSelectedCountry.format.replace(/\./g, '9'),
     }, () => {
       if (diff > 0) {
         caretPosition = caretPosition - diff;
@@ -579,14 +552,14 @@ class PhoneInput extends React.Component {
 
       const lastChar = formattedNumber.charAt(formattedNumber.length - 1);
 
-      if (lastChar == ')') {
+      if (lastChar === ')') {
         this.numberInputRef.setSelectionRange(formattedNumber.length - 1, formattedNumber.length - 1);
       }
       else if (caretPosition > 0 && oldFormattedText.length >= formattedNumber.length) {
         this.numberInputRef.setSelectionRange(caretPosition, caretPosition);
       }
 
-      if (onChange) onChange(formattedNumber.replace(/[^0-9]+/g,''), this.getCountryData(), e, formattedNumber);
+      if (onChange) onChange(`+${newSelectedCountry.dialCode}${formattedNumber}`, this.getCountryData());
     });
   }
 
@@ -600,44 +573,32 @@ class PhoneInput extends React.Component {
     e.target.setSelectionRange(0, len);
   }
 
-  handleFlagItemClick = (country, e) => {
-    const currentSelectedCountry = this.state.selectedCountry;
-    const newSelectedCountry = this.state.onlyCountries.find(o => o == country);
+  handleFlagItemClick = (country) => {
+    let { formattedNumber } = this.state;
+    const newSelectedCountry = this.state.onlyCountries.find(o => o === country);
     if (!newSelectedCountry) return;
 
-    const unformattedNumber = this.state.formattedNumber.replace(' ', '').replace('(', '').replace(')', '').replace('-', '');
-    const newNumber = unformattedNumber.length > 1 ? unformattedNumber.replace(currentSelectedCountry.dialCode, newSelectedCountry.dialCode) : newSelectedCountry.dialCode;
-    const formattedNumber = this.formatNumber(newNumber.replace(/\D/g, ''), newSelectedCountry);
+    formattedNumber = this.formatNumber(formattedNumber.replace(/[^0-9]/g, ''), newSelectedCountry);
+    const placeholder = newSelectedCountry.format.replace(/\./g, '9');
 
     this.setState({
       showDropdown: false,
       selectedCountry: newSelectedCountry,
       freezeSelection: true,
-      formattedNumber
+      formattedNumber,
+      placeholder
     }, () => {
       this.cursorToEnd();
-      if (this.props.onChange) this.props.onChange(formattedNumber.replace(/[^0-9]+/g,''), this.getCountryData(), e, formattedNumber);
+      if (this.props.onChange) this.props.onChange(`+${newSelectedCountry.dialCode}${formattedNumber}`, this.getCountryData());
     });
   }
 
   handleInputFocus = (e) => {
-    // if the input is blank, insert dial code of the selected country
-    if (this.numberInputRef) {
-      if (this.numberInputRef.value === this.props.prefix && this.state.selectedCountry && !this.props.disableCountryCode) {
-        this.setState({
-          formattedNumber: this.props.prefix + this.state.selectedCountry.dialCode
-        }, () => {this.props.jumpCursorToEnd && setTimeout(this.cursorToEnd, 0)});
-      }
-    }
-
-    this.setState({ placeholder: '' });
-
     this.props.onFocus && this.props.onFocus(e, this.getCountryData());
     this.props.jumpCursorToEnd && setTimeout(this.cursorToEnd, 0);
   }
 
   handleInputBlur = (e) => {
-    if (!e.target.value) this.setState({ placeholder: this.props.placeholder });
     this.props.onBlur && this.props.onBlur(e, this.getCountryData());
   }
 
@@ -647,6 +608,29 @@ class PhoneInput extends React.Component {
     e.clipboardData.setData('text/plain', text);
     e.preventDefault();
   }
+
+  handleInputPaste = (e) => {
+    e.preventDefault();
+    const enteredValue = e.target.value;
+
+    const { onChange } = this.props;
+    const { selectedCountry } = this.state;
+    const pastedValue = window.clipboardData ?
+      window.clipboardData.getData('Text') // IE
+      : e.clipboardData.getData('text/plain');
+
+    const rawPastedValue = `${enteredValue}${pastedValue}`.replace(/[^0-9]/gim, '');
+
+    const { dialCode } = selectedCountry;
+    const phone = startsWith(rawPastedValue, dialCode)
+      ? rawPastedValue.slice(dialCode.length)
+      : rawPastedValue;
+
+    const formattedNumber = this.formatNumber(phone, selectedCountry);
+    this.setState({ formattedNumber });
+
+    if (onChange) onChange(`+${dialCode}${formattedNumber}`, this.getCountryData());
+  };
 
   getHighlightCountryIndex = (direction) => {
     // had to write own function because underscore does not have findIndex. lodash has it
@@ -662,7 +646,7 @@ class PhoneInput extends React.Component {
 
   searchCountry = () => {
     const probableCandidate = this.getProbableCandidate(this.state.queryString) || this.state.onlyCountries[0];
-    const probableCandidateIndex = this.state.onlyCountries.findIndex(o => o == probableCandidate) + this.state.preferredCountries.length;
+    const probableCandidateIndex = this.state.onlyCountries.findIndex(o => o === probableCandidate) + this.state.preferredCountries.length;
 
     this.scrollTo(this.getElement(probableCandidateIndex), true);
 
@@ -749,7 +733,7 @@ class PhoneInput extends React.Component {
 
     if (searchValue === '' && selectedCountry) {
       const { onlyCountries } = this.state
-      highlightCountryIndex = preferredCountries.concat(onlyCountries).findIndex(o => o == selectedCountry);
+      highlightCountryIndex = preferredCountries.concat(onlyCountries).findIndex(o => o === selectedCountry);
       // wait asynchronous search results re-render, then scroll
       setTimeout(() => this.scrollTo(this.getElement(highlightCountryIndex)), 100)
     }
@@ -821,7 +805,7 @@ class PhoneInput extends React.Component {
         >
           <div className={inputFlagClasses}/>
           <span className='country-name'>{this.getDropdownCountryName(country)}</span>
-          <span className='dial-code'>{country.format ? this.formatNumber(country.dialCode, country) : (prefix+country.dialCode)}</span>
+          <span className='dial-code'>{prefix+country.dialCode}</span>
         </li>
       );
     });
@@ -893,7 +877,7 @@ class PhoneInput extends React.Component {
   }
 
   render() {
-    const { onlyCountries, selectedCountry, showDropdown, formattedNumber, hiddenAreaCodes } = this.state;
+    const { onlyCountries, selectedCountry, showDropdown, formattedNumber, hiddenAreaCodes, placeholder } = this.state;
     const { disableDropdown, renderStringAsFlag, isValid, defaultErrorMessage, specialLabel } = this.props;
 
     let isValidValue, errorMessage;
@@ -940,23 +924,6 @@ class PhoneInput extends React.Component {
         onKeyDown={this.handleKeydown}>
         {specialLabel && <div className='special-label'>{specialLabel}</div>}
         {errorMessage && <div className='invalid-number-message'>{errorMessage}</div>}
-        <input
-          className={inputClasses}
-          style={this.props.inputStyle}
-          onChange={this.handleInput}
-          onClick={this.handleInputClick}
-          onDoubleClick={this.handleDoubleClick}
-          onFocus={this.handleInputFocus}
-          onBlur={this.handleInputBlur}
-          onCopy={this.handleInputCopy}
-          value={formattedNumber}
-          ref={el => this.numberInputRef = el}
-          onKeyDown={this.handleInputKeyDown}
-          placeholder={this.props.placeholder}
-          disabled={this.props.disabled}
-          type='tel'
-          {...this.props.inputProps}
-        />
 
         <div
           className={flagViewClasses}
@@ -976,12 +943,32 @@ class PhoneInput extends React.Component {
             aria-expanded={showDropdown ? true : undefined}
           >
             <div className={inputFlagClasses}>
-              {!disableDropdown && <div className={arrowClasses}></div>}
+              {!disableDropdown && <div className={arrowClasses} />}
             </div>
+            <div className='dial-code'>+{selectedCountry.dialCode}</div>
           </div>}
 
           {showDropdown && this.getCountryDropdownList()}
         </div>
+
+        <input
+          className={inputClasses}
+          style={this.props.inputStyle}
+          onChange={this.handleInput}
+          onClick={this.handleInputClick}
+          onDoubleClick={this.handleDoubleClick}
+          onFocus={this.handleInputFocus}
+          onBlur={this.handleInputBlur}
+          onCopy={this.handleInputCopy}
+          onPaste={this.handleInputPaste}
+          value={formattedNumber}
+          ref={el => this.numberInputRef = el}
+          onKeyDown={this.handleInputKeyDown}
+          placeholder={placeholder}
+          disabled={this.props.disabled}
+          type='tel'
+          {...this.props.inputProps}
+        />
       </div>
     );
   }

@@ -121,7 +121,7 @@ const rawCountries = [
     ['europe', 'ex-ussr'],
     'by',
     '375',
-    '(..) ... .. ..'
+    '(..) ...-..-..'
   ],
   [
     'Belgium',
